@@ -44,8 +44,8 @@ if __name__ == "__main__":
     # history = np.load('results/name_of_your_model.npy',allow_pickle='TRUE').item()
     # plot_history(history)
     # 
-    # Your code should change the number of epochs
-    epochs = 1
+    # Tuned training length for the base model.
+    epochs = 5
     print('* Data preprocessing')
     train_dataset, validation_dataset, test_dataset = get_datasets()
     name = 'basic_model'

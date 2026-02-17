@@ -1,11 +1,17 @@
-from config import BOARD_SIZE, categories, image_size
+from glob import glob
+import os
+import random
+
+from config import BOARD_SIZE, categories, image_size, base_model_path
 from tensorflow.keras import models
 import numpy as np
-import tensorflow as tf
+import cv2
+
 
 class TicTacToePlayer:
     def get_move(self, board_state):
         raise NotImplementedError()
+
 
 class UserInputPlayer:
     def get_move(self, board_state):
@@ -17,7 +23,6 @@ class UserInputPlayer:
         except Exception:
             return None
 
-import random
 
 class RandomPlayer:
     def get_move(self, board_state):
@@ -28,34 +33,53 @@ class RandomPlayer:
                     positions.append((i, j))
         return random.choice(positions)
 
-from matplotlib import pyplot as plt
-from matplotlib.image import imread
-import cv2
 
 class UserWebcamPlayer:
+    def __init__(self):
+        self._model = None
+
+    @staticmethod
+    def _resolve_model_path():
+        if os.path.exists(base_model_path):
+            return base_model_path
+
+        candidates = sorted(glob('results/basic_model*.keras'))
+        if candidates:
+            return candidates[-1]
+
+        raise FileNotFoundError(
+            "Unable to find trained model for webcam control. "
+            "Set config.base_model_path or place a basic model in results/."
+        )
+
+    def _load_model_if_needed(self):
+        if self._model is None:
+            self._model = models.load_model(self._resolve_model_path())
+        return self._model
+
     def _process_frame(self, frame):
         frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         width, height = frame.shape
         size = min(width, height)
-        pad = int((width-size)/2), int((height-size)/2)
-        frame = frame[pad[0]:pad[0]+size, pad[1]:pad[1]+size]
+        pad = int((width - size) / 2), int((height - size) / 2)
+        frame = frame[pad[0]:pad[0] + size, pad[1]:pad[1] + size]
         return frame
 
     def _access_webcam(self):
-        import cv2
         cv2.namedWindow("preview")
         vc = cv2.VideoCapture(0)
-        if vc.isOpened(): # try to get the first frame
+        if vc.isOpened():
             rval, frame = vc.read()
             frame = self._process_frame(frame)
         else:
             rval = False
+            frame = None
         while rval:
             cv2.imshow("preview", frame)
             rval, frame = vc.read()
             frame = self._process_frame(frame)
             key = cv2.waitKey(20)
-            if key == 13: # exit on Enter
+            if key == 13:  # exit on Enter
                 break
 
         vc.release()
@@ -66,15 +90,15 @@ class UserWebcamPlayer:
         print('reference:')
         for i, emotion in enumerate(categories):
             print('{} {} is {}.'.format(row_or_col, i, emotion))
-    
+
     def _get_row_or_col_by_text(self):
         try:
             val = int(input())
             return val
-        except Exception as e:
+        except Exception:
             print('Invalid position')
             return None
-    
+
     def _get_row_or_col(self, is_row):
         try:
             row_or_col = 'row' if is_row else 'col'
@@ -90,26 +114,21 @@ class UserWebcamPlayer:
                 return self._get_row_or_col_by_text()
             return emotion
         except Exception as e:
-            # error accessing the webcam, or processing the image
             raise e
-    
-    def _get_emotion(self, img) -> int:
-        # Your code goes here
-        #
-        # img an np array of size NxN (square), each pixel is a value between 0 to 255
-        # you have to resize this to image_size before sending to your model
-        # to show the image here, you can use:
-        # import matplotlib.pyplot as plt
-        # plt.imshow(img, cmap='gray', vmin=0, vmax=255)
-        # plt.show()
-        #
-        # You have to use your saved model, use resized img as input, and get one classification value out of it
-        # The classification value should be 0, 1, or 2 for neutral, happy or surprise respectively
 
-        # return an integer (0, 1 or 2), otherwise the code will throw an error
-        return 1
-        pass
-    
+    def _get_emotion(self, img) -> int:
+        if img is None:
+            return None
+
+        model = self._load_model_if_needed()
+
+        resized = cv2.resize(img, image_size)
+        rgb = np.stack([resized, resized, resized], axis=-1).astype(np.float32)
+        batch = np.expand_dims(rgb, axis=0)
+
+        prediction = model.predict(batch, verbose=0)
+        return int(np.argmax(prediction, axis=-1)[0])
+
     def get_move(self, board_state):
         row, col = None, None
         while row is None:
