@@ -56,7 +56,7 @@ class TicTacToeGame:
     if win != None:
       return win
     # reverse diagonal
-    win = self.board[0][0]
+    win = self.board[0][BOARD_SIZE - 1]
     for i in range(BOARD_SIZE):
       if self.board[i][BOARD_SIZE - 1 - i] != win:
         win = None
